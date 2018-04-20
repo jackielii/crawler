@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 const htmlHome = `
@@ -147,13 +145,4 @@ func TestCrawl(t *testing.T) {
 		t.Fatalf("expect products page url to be /products, got %s", products.Info.URI)
 	}
 
-}
-
-func TestCrawlMonzo(t *testing.T) {
-	Verbose = true
-	page, err := Crawl("https://monzo.com")
-	if err != nil {
-		t.Fatal(err)
-	}
-	spew.Dump(page)
 }
