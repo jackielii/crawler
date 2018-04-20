@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/html"
@@ -69,6 +70,7 @@ func Crawl(urlstring string) (*Page, error) {
 
 	// use a hash map to keep unique links
 	var allLinks = make(map[string]*Page)
+	var allLinksLock sync.RWMutex // protect all links read & write
 	var siteRoot *url.URL
 	var siteTitle = "site root"
 
@@ -95,8 +97,12 @@ func Crawl(urlstring string) (*Page, error) {
 			return nil, errors.New("unable to recognise site root url")
 		}
 
-		if allLinks[u.String()] != nil {
-			return allLinks[u.String()], nil
+		allLinksLock.RLock()
+		existing := allLinks[u.String()]
+		allLinksLock.RUnlock()
+
+		if existing != nil {
+			return existing, nil
 		}
 
 		if u.Scheme != "http" && u.Scheme != "https" {
@@ -113,7 +119,9 @@ func Crawl(urlstring string) (*Page, error) {
 		page := &Page{
 			Info: URL{URI: u.Path, Description: description},
 		}
+		allLinksLock.Lock()
 		allLinks[u.String()] = page
+		allLinksLock.Unlock()
 
 		if resp.StatusCode != 200 {
 			debugf("!!!server returned %d for %s\n", resp.StatusCode, u.String())
@@ -128,15 +136,29 @@ func Crawl(urlstring string) (*Page, error) {
 		defer resp.Body.Close()
 
 		var links []*Page
-		for _, url := range urls {
-			l, err := crawl(url.URI, url.Description)
+		m := &sync.Mutex{} // protect append to links
+		wg := &sync.WaitGroup{}
+		errs := make(chan error, len(urls))
+		for _, u := range urls {
+			wg.Add(1)
+			go func(u URL) {
+				defer wg.Done()
+				l, err := crawl(u.URI, u.Description)
+				errs <- err
+				if err == nil {
+					m.Lock()
+					links = append(links, l)
+					m.Unlock()
+				}
+			}(u)
+		}
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
 			if err != nil {
 				return nil, err
 			}
-			if l == nil {
-				continue
-			}
-			links = append(links, l)
 		}
 
 		page.Links = links

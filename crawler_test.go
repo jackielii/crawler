@@ -98,13 +98,25 @@ func TestCrawl(t *testing.T) {
 	if len(page.Links) != 3 {
 		t.Fatalf("expect 3 links got %d", len(page.Links))
 	}
-	home := page.Links[0]
-	if home.Info.URI != "/" {
-		t.Errorf("expect home page url to be /, got %s", home.Info.URI)
+
+	var home *Page
+	var about *Page
+	var products *Page
+	for _, link := range page.Links {
+		switch link.Info.URI {
+		case "/":
+			home = link
+		case "/about":
+			about = link
+		case "/products":
+			products = link
+		}
 	}
-	about := page.Links[1]
-	if about.Info.URI != "/about" {
-		t.Errorf("expect about page url to be /about, got %s", about.Info.URI)
+	if home == nil {
+		t.Fatalf("expect home page url to be /, got %s", home.Info.URI)
+	}
+	if about == nil {
+		t.Fatalf("expect about page url to be /about, got %s", about.Info.URI)
 	}
 	if len(about.Links) != 2 {
 		t.Fatalf("expect about page to have 1 link got %d", len(about.Links))
@@ -114,9 +126,8 @@ func TestCrawl(t *testing.T) {
 		t.Errorf("expect career page url to be /career, got %s", career.Info.URI)
 	}
 
-	products := page.Links[2]
-	if products.Info.URI != "/products" {
-		t.Errorf("expect products page url to be /products, got %s", products.Info.URI)
+	if products == nil {
+		t.Fatalf("expect products page url to be /products, got %s", products.Info.URI)
 	}
 
 	spew.Dump(page)
