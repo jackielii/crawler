@@ -16,6 +16,10 @@ import (
 // Verbose is the flag toggle verbose logging
 var Verbose bool
 
+// QueueSize is the size of the queue to fetch urls concurrently
+var QueueSize = 10
+var globalTaskQueue = make(chan struct{}, QueueSize)
+
 // Page represents a web page
 type Page struct {
 	Info  URL
@@ -77,6 +81,9 @@ func Crawl(urlstring string) (*Page, error) {
 
 	var crawl func(ctx context.Context, urlstring, description string) (*Page, error)
 	crawl = func(ctx context.Context, urlstring, description string) (*Page, error) {
+		globalTaskQueue <- struct{}{}
+		defer func() { <-globalTaskQueue }()
+
 		u, err := url.Parse(urlstring)
 		if err != nil {
 			return nil, err
