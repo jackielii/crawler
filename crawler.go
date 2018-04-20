@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 )
 
 // Verbose is the flag toggle verbose logging
-var Verbose bool = true
+var Verbose bool
 
 // Page represents a web page
 type Page struct {
@@ -74,8 +75,8 @@ func Crawl(urlstring string) (*Page, error) {
 	var siteRoot *url.URL
 	var siteTitle = "site root"
 
-	var crawl func(urlstring, description string) (*Page, error)
-	crawl = func(urlstring, description string) (*Page, error) {
+	var crawl func(ctx context.Context, urlstring, description string) (*Page, error)
+	crawl = func(ctx context.Context, urlstring, description string) (*Page, error) {
 		u, err := url.Parse(urlstring)
 		if err != nil {
 			return nil, err
@@ -138,11 +139,14 @@ func Crawl(urlstring string) (*Page, error) {
 		wg := &sync.WaitGroup{}
 		pc := make(chan *Page)
 		errs := make(chan error)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 		for _, u := range urls {
 			wg.Add(1)
 			go func(u URL) {
 				defer wg.Done()
-				l, err := crawl(u.URI, u.Description)
+				l, err := crawl(ctx, u.URI, u.Description)
 				if err != nil {
 					errs <- err
 				} else {
@@ -159,13 +163,20 @@ func Crawl(urlstring string) (*Page, error) {
 	loop:
 		for {
 			select {
-			case link := <-pc:
-				links = append(links, link)
+			case page := <-pc:
+				links = append(links, page)
 			case err := <-errs:
 				if err != nil {
+					cancel()
 					return nil, err
 				}
 				break loop
+			case <-ctx.Done():
+				if ctx.Err() == context.Canceled {
+					break loop
+				} else {
+					return nil, ctx.Err()
+				}
 			}
 		}
 
@@ -174,7 +185,7 @@ func Crawl(urlstring string) (*Page, error) {
 		return page, nil
 	}
 
-	return crawl(urlstring, siteTitle)
+	return crawl(context.Background(), urlstring, siteTitle)
 }
 
 func debugf(format string, args ...interface{}) {

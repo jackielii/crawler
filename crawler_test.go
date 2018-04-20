@@ -1,10 +1,13 @@
 package crawler
 
 import (
+	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 )
@@ -67,17 +70,31 @@ func TestParse(t *testing.T) {
 }
 
 func newTestServer() *httptest.Server {
+	Verbose = true
+	rand.Seed(1500)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		sleep := time.Duration(rand.Int63n(1000)) * time.Millisecond
+		fmt.Println("sleeping for ", sleep)
+		time.Sleep(sleep)
 		w.Write([]byte(htmlHome))
 	})
 	mux.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request) {
+		sleep := time.Duration(rand.Int63n(1000)) * time.Millisecond
+		fmt.Println("sleeping for ", sleep)
+		time.Sleep(sleep)
 		w.Write([]byte(htmlAbout))
 	})
 	mux.HandleFunc("/career", func(w http.ResponseWriter, r *http.Request) {
+		sleep := time.Duration(rand.Int63n(1000)) * time.Millisecond
+		fmt.Println("sleeping for ", sleep)
+		time.Sleep(sleep)
 		w.Write([]byte(htmlCareer))
 	})
 	mux.HandleFunc("/products", func(w http.ResponseWriter, r *http.Request) {
+		sleep := time.Duration(rand.Int63n(1000)) * time.Millisecond
+		fmt.Println("sleeping for ", sleep)
+		time.Sleep(sleep)
 		w.WriteHeader(http.StatusNotFound)
 	})
 	return httptest.NewServer(mux)
