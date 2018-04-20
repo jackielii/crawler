@@ -135,29 +135,37 @@ func Crawl(urlstring string) (*Page, error) {
 		}
 		defer resp.Body.Close()
 
-		var links []*Page
-		m := &sync.Mutex{} // protect append to links
 		wg := &sync.WaitGroup{}
-		errs := make(chan error, len(urls))
+		pc := make(chan *Page)
+		errs := make(chan error)
 		for _, u := range urls {
 			wg.Add(1)
 			go func(u URL) {
 				defer wg.Done()
 				l, err := crawl(u.URI, u.Description)
-				errs <- err
-				if err == nil {
-					m.Lock()
-					links = append(links, l)
-					m.Unlock()
+				if err != nil {
+					errs <- err
+				} else {
+					pc <- l
 				}
 			}(u)
 		}
-		wg.Wait()
-		close(errs)
+		go func() {
+			wg.Wait()
+			close(errs)
+		}()
 
-		for err := range errs {
-			if err != nil {
-				return nil, err
+		var links []*Page
+	loop:
+		for {
+			select {
+			case link := <-pc:
+				links = append(links, link)
+			case err := <-errs:
+				if err != nil {
+					return nil, err
+				}
+				break loop
 			}
 		}
 
