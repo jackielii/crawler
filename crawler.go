@@ -17,7 +17,7 @@ import (
 var Verbose bool
 
 // QueueSize is the size of the queue to fetch urls concurrently
-var QueueSize = 10
+var QueueSize = 100
 var globalTaskQueue = make(chan struct{}, QueueSize)
 
 // Page represents a web page
@@ -48,9 +48,7 @@ func parse(r io.Reader) ([]URL, error) {
 				if a.Key == "href" {
 					link.URI = a.Val
 					if n.FirstChild != nil {
-						link.Description = n.FirstChild.Data
-					} else {
-						link.Description = a.Val
+						link.Description = sanitise(n.FirstChild.Data)
 					}
 					break
 				}
@@ -75,15 +73,12 @@ func Crawl(urlstring string) (*Page, error) {
 
 	// use a hash map to keep unique links
 	var allLinks = make(map[string]*Page)
-	var allLinksLock sync.RWMutex // protect all links read & write
+	var allLinksLock sync.Mutex // protect all links read & write
 	var siteRoot *url.URL
-	var siteTitle = "site root"
+	var siteTitle = urlstring
 
 	var crawl func(ctx context.Context, urlstring, description string) (*Page, error)
 	crawl = func(ctx context.Context, urlstring, description string) (*Page, error) {
-		globalTaskQueue <- struct{}{}
-		defer func() { <-globalTaskQueue }()
-
 		u, err := url.Parse(urlstring)
 		if err != nil {
 			return nil, err
@@ -105,31 +100,32 @@ func Crawl(urlstring string) (*Page, error) {
 			return nil, errors.New("unable to recognise site root url")
 		}
 
-		allLinksLock.RLock()
-		existing := allLinks[u.String()]
-		allLinksLock.RUnlock()
-
-		if existing != nil {
-			return existing, nil
-		}
+		// the key value to test uniqueness
+		key := sanitise(u.Path)
 
 		if u.Scheme != "http" && u.Scheme != "https" {
 			debugf("!!!unsupported scheme %s at url %s\n", u.Scheme, u.String())
 			return nil, nil
 		}
 
+		allLinksLock.Lock()
+		existing := allLinks[key]
+
+		if existing != nil {
+			allLinksLock.Unlock()
+			return existing, nil
+		}
+		page := &Page{
+			Info: URL{URI: key, Description: description},
+		}
+		allLinks[key] = page
+		allLinksLock.Unlock()
+
 		debugf("crawling %s ...\n", u.String())
-		resp, err := http.Get(u.String())
+		resp, err := doGet(u.String())
 		if err != nil {
 			return nil, err
 		}
-
-		page := &Page{
-			Info: URL{URI: u.Path, Description: description},
-		}
-		allLinksLock.Lock()
-		allLinks[u.String()] = page
-		allLinksLock.Unlock()
 
 		if resp.StatusCode != 200 {
 			debugf("!!!server returned %d for %s\n", resp.StatusCode, u.String())
@@ -171,7 +167,9 @@ func Crawl(urlstring string) (*Page, error) {
 		for {
 			select {
 			case page := <-pc:
-				links = append(links, page)
+				if page != nil {
+					links = append(links, page)
+				}
 			case err := <-errs:
 				if err != nil {
 					cancel()
@@ -192,11 +190,25 @@ func Crawl(urlstring string) (*Page, error) {
 		return page, nil
 	}
 
-	return crawl(context.Background(), urlstring, siteTitle)
+	ctx := context.Background()
+
+	return crawl(ctx, urlstring, siteTitle)
+}
+
+func doGet(u string) (*http.Response, error) {
+	globalTaskQueue <- struct{}{}
+	defer func() { <-globalTaskQueue }()
+	return http.Get(u)
 }
 
 func debugf(format string, args ...interface{}) {
 	if Verbose {
 		fmt.Printf(format, args...)
 	}
+}
+
+func sanitise(s string) string {
+	s = strings.Replace(s, "\n", "", -1)
+	s = strings.Replace(s, " ", "", -1)
+	return s
 }
