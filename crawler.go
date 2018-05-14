@@ -33,10 +33,13 @@ type URL struct {
 }
 
 // parse reads from r and returns all think from r
-func parse(r io.Reader) ([]URL, error) {
+func parse(u *url.URL, r io.Reader) ([]URL, error) {
 	doc, err := html.Parse(r)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to parse html")
+	}
+	if !strings.HasSuffix(u.Path, "/") {
+		u.Path += "/"
 	}
 
 	var links []URL
@@ -46,7 +49,16 @@ func parse(r io.Reader) ([]URL, error) {
 			link := URL{}
 			for _, a := range n.Attr {
 				if a.Key == "href" {
-					link.URI = a.Val
+					u1, err := url.Parse(a.Val)
+					if err != nil {
+						panic(err)
+					}
+
+					if u1.Hostname() != "" && u1.Hostname() != u.Hostname() {
+						continue
+					}
+
+					link.URI = u.ResolveReference(u1).Path
 					if n.FirstChild != nil {
 						link.Description = sanitise(n.FirstChild.Data)
 					}
@@ -133,11 +145,11 @@ func Crawl(urlstring string) (*Page, error) {
 			return page, nil
 		}
 
-		urls, err := parse(resp.Body)
+		urls, err := parse(u, resp.Body)
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		resp.Body.Close()
 
 		wg := &sync.WaitGroup{}
 		pc := make(chan *Page)

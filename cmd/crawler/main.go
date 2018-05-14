@@ -35,10 +35,11 @@ var printed = make(map[string]bool)
 
 func print(p *crawler.Page, indent int) {
 	fmt.Print(strings.Repeat(" ", indent))
-	fmt.Printf("%s \"%s\"\n", p.Info.URI, p.Info.Description)
 	if printed[p.Info.URI] {
+		fmt.Printf("(showed) %s \"%s\"\n", p.Info.URI, p.Info.Description)
 		return
 	}
+	fmt.Printf("%s \"%s\"\n", p.Info.URI, p.Info.Description)
 	printed[p.Info.URI] = true
 
 	// skip dup on the same level
